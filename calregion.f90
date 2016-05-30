@@ -7,12 +7,12 @@ implicit none
 !座標の位置を(pos_y,listy_round(pos_y) ) にしたバージョン
 !uxのマイナス側,のほうにはマイナスの符号を付けなくちゃいけないことに気づいた
 ! definition and memory assignment
-integer*4,	parameter	:: ix = 101!180	 	       	! number of x-directional spatial intervals
-integer*4,	parameter	:: jx = 101!135	 	 	    ! number of y-directional spatial intervals
+integer*4,	parameter	:: ix = 201	 	       	! number of x-directional spatial intervals
+integer*4,	parameter	:: jx = 201	 	 	    ! number of y-directional spatial intervals
 integer*4,	parameter	:: tx = 200		            ! number of time intervals
 integer*4,	parameter	:: td = 15			        ! input frequency
-integer*4,	parameter	:: id = 51!68		        ! x-directional position of input
-integer*4,	parameter	:: jd = 51			        ! y-directional position of input
+integer*4,	parameter	:: id = 101		            ! x-direc\tional position of input
+integer*4,	parameter	:: jd = 101			        ! y-directional position of input
 
 real*4,		parameter	:: crn = 0.7		        ! Courant number (= phase velocity * time interval / spatial interval)
 real*4, 	parameter	:: dd = 199.0/200.0	        ! parameter of Higdon's absorption boundary
@@ -56,6 +56,8 @@ real*4,    allocatable, dimension(:)   :: unit_vector_x    !unit vector between 
 real*4,    allocatable, dimension(:)   :: unit_vector_y
 real*4,    allocatable, dimension(:)   :: nx
 real*4,    allocatable, dimension(:)   :: ny   
+
+real*4,    allocatable, dimension(:,:)   :: kari
 integer*4 :: box(4)
 
 character*256	:: fn, str				    	! output file name and temporal pass string
@@ -67,7 +69,7 @@ integer*4	:: t, i ,j,l,k, pos_y, pos_x, filenumber! loop variable
 integer*4   :: coordinateno                     ! coordiateno
 real*4		:: pai							    ! circular constant
 real*4		:: a, b, c, d, e				    ! coefficients of Higdon's absorption boundary
-real*4      :: Z , arufa , a1,rho,onnsoku
+real*4      :: Z , arufa , a1,rho,onnsoku,number
 real*4      :: span,xx,yy,r,Rlength,timestep
                         !unit normal vector x y
 
@@ -76,11 +78,15 @@ real*4      :: span,xx,yy,r,Rlength,timestep
 data arufa/ 0.01/    !吸音率
 data filenumber/ 21/
 
+
+
 !■■■座標の読み込み■■■!
-open (50,file='C:\Users\n\Documents\16_semi\0_input_txt\coordinate\100100.txt')
+open (50,file='C:\Users\n\Documents\16_semi\0_input_txt\coordinate\4.txt')
     read (50,'(I3)')  coordinateno
     allocate( x       (coordinateno))
     allocate( y       (coordinateno))
+    
+    allocate( kari    (coordinateno,ix+1))!仮
     
     allocate( listx   (coordinateno,ix+1))      !座標数=直線の本数の関係を使用. (x,y) = (直線の本数,x方向への空間広さ)
     allocate( listy   (coordinateno,jx+1))
@@ -105,6 +111,7 @@ open (50,file='C:\Users\n\Documents\16_semi\0_input_txt\coordinate\100100.txt')
     allocate( katamuki_y      (coordinateno))
     allocate( katamuki        (coordinateno))
     
+
     allocate( range_x_max     (ix+1))!xにおける挟みこむ計算範囲の格納
     allocate( range_x_min     (ix+1))!xにおける挟みこむ計算範囲の格納
     
@@ -114,14 +121,6 @@ open (50,file='C:\Users\n\Documents\16_semi\0_input_txt\coordinate\100100.txt')
     print*,x(1),y(1),x(2),y(2),x(3),y(3),x(4),y(4),coordinateno
 close(50)
 
-!-----ファイル生成-----!
-do l = 20,filenumber
-write(filename,*) l   !l->filename 変換
-    filename='gwave'//trim(adjustl(filename))//'.csv' 
-    open( l ,file='data\'//trim(filename)//'', status='replace')
-    !open( l+1 ,file=''//trim(filename)//'', status='replace')
-	write(l,'(A53)')"[ASCII 25000Hz, Channels: 1, Samples:16500, Flags: 0]"
-end do                                                      !ファイル生成終了
 
 
 !-----インピーダンス境界吸音率の決定-----!
@@ -156,12 +155,18 @@ end do
 end do
 
 do i = 0,coordinateno
-do j = 0,jx+1
-    listx(i,j) = 0
-    listx_round(i,j) =0
-end do
-end do
+    do j = 0,ix+1
+        kari(i,j) = 0
+        listx(i,j) = 0
+        listx_round(i,j) =0
+    end do
 
+    do j = 0,jx+1
+        listy(i,j) = 0
+        listy_round(i,j) =0
+    end do
+
+end do
 
 ! input wave definition (one cycle of sinusoidal wave on one point)
 Rlength = 5      
@@ -173,11 +178,6 @@ do j = 2,jx
     p2(i,j) = 10*exp(-(r/Rlength)**2)
 end do
 end do 
-
-
-
-
-
 
 !外積による領域情報の取得.
 !2座標間の外積の結果符号がすべて同じなら内側に音源が存在する.
@@ -206,9 +206,6 @@ t = 1
         print *, x(t), x(t+1), y(t), y(t+1)
         !print *, "test"
     end do
-       
-
-
     !2点間の傾きを取得
     do t = 1,4
         if (t == 4)then
@@ -230,43 +227,80 @@ t = 1
     end do
 
 !■■■直線の作成-必要領域の計算■■■!
+!配列要素を0とそれ以外に分ける
 do i = 1,4
-    if ( i /= 4 )then 
-        if (x(i) < x(i+1) )then    
-        !■■■listxの計算■■■!
-            do pos_x = x(i), x(i+1)    !ここで降順にならびかえてないと計算が行われない。0に鳴る。
-                listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
-                listx_round( i, pos_x ) = nint( listx( i, pos_x ))
-            end do 
-        else
-            do pos_x = x(i+1), x(i)    !ここで降順にならびかえてないと計算が行われない。0に鳴る。
-                listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
-                listx_round( i, pos_x ) = nint( listx( i, pos_x ))
-            end do
+    if ( abs(katamuki(i) ) < 1 )then!傾きが45度より小さい時
+        if ( i /= 4 )then ! i = 1,2,3の場合
+            if (x(i) < x(i+1) )then ! 座標が大きい順序になっているか
+                do pos_x = x(i), x(i+1)
+                    listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
+                    listx_round( i, pos_x ) = nint( listx( i, pos_x ))
+                end do 
+            else
+                do pos_x = x(i), x(i+1), -1    
+                    listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
+                    listx_round( i, pos_x ) = nint( listx( i, pos_x ))
+                end do
+            end if
+        else! i = 4のとき
+            if (x(i) < x(i-(i-1)) )then
+                do pos_x = x(i), x(i-(i-1) )  
+                    listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
+                    listx_round( i, pos_x ) = nint( listx( i, pos_x ))
+                end do 
+            else
+                do pos_x = x(i), x(i-(i-1) ), -1  
+                    listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
+                    listx_round( i, pos_x ) = nint( listx( i, pos_x ))
+                end do
+            end if
         end if
-    else
-        if (x(i) < x(i-(i-1)) )then
-            do pos_x = x(i - (i-1)), x(i)    !ここで降順にならびかえてないと計算が行われない。0に鳴る。
-                listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
-                listx_round( i, pos_x ) = nint( listx( i, pos_x ))
-            end do 
-        else
-            do pos_x = x(i), x(i-(i-1) )    !ここで降順にならびかえてないと計算が行われない。0に鳴る。
-                listx( i, pos_x ) = katamuki(i) * pos_x + high(i) 
-                listx_round( i, pos_x ) = nint( listx( i, pos_x ))
-            end do
+    else!傾きが45度より大きいとき
+        if ( i /= 4 )then! i = 1,2,3のとき 
+            if ( y(i) < y(i+1) )then
+            !■■■listyを計算■■■!
+                do pos_y = y(i), y(i+1)    
+                    listy( i, pos_y) = ( pos_y - high(i) ) / katamuki(i)!ここで得るlistyがほかいうpos_xと同列の意味をもつ
+                    listy_round( i ,pos_y) = nint(listy( i ,pos_y) )
+                    listx( i, pos_y) = katamuki(i) * listy(i, pos_y) + high(i)
+                    listx_round( i ,listy_round( i ,pos_y)) = nint(listx( i ,pos_y) )
+                end do
+            else
+!1-角度が45度以上なので、解像度をより取ることの出来るy = 1,2,3…と代入。
+!2-y座標を代入してx座標のリストを得る
+!この時、得られるx座標は実数
+!3-listyをy=ax+bへ代入して挟み込む範囲のxにおけるyの値を求める。
+                do pos_y = y(i), y(i+1), -1!y=18-41でx座標を得る    
+                    listy( i, pos_y) = ( pos_y - high(i) ) / katamuki(i)
+                    listy_round( i ,pos_y) = nint(listy( i ,pos_y) )
+                    listx( i, pos_y) = katamuki(i) * listy(i, pos_y) + high(i)
+                    listx_round( i ,listy_round( i ,pos_y)) = nint(listx( i ,pos_y) )
+                end do
+            end if
+        else! i = 4のとき
+            if (y(i) < y(i-(i-1)) )then
+                do pos_y = y(i), y(i-(i-1) )  
+                    listy( i, pos_y) = ( pos_y - high(i) ) / katamuki(i)
+                    listy_round( i ,pos_y) = nint(listy( i ,pos_y) )
+                    listx( i, pos_y) = katamuki(i) * listy(i, pos_y) + high(i)
+                    listx_round( i ,listy_round( i ,pos_y)) = nint(listx( i ,pos_y) )
+                end do
+            else
+                do pos_y = y(i), y(i-(i-1) ) , -1
+                    listy( i, pos_y) = ( pos_y - high(i) ) / katamuki(i)
+                    listy_round( i ,pos_y) = nint(listy( i ,pos_y) )
+                    listx( i, pos_y) = katamuki(i) * listy(i, pos_y) + high(i)
+                    listx_round( i ,listy_round( i ,pos_y)) = nint(listx( i ,pos_y) )
+                end do
+            end if
         end if
     end if
-end do
-
-do pos_x = 0,ix+1
-    print *, listx_round(1, pos_x), listx_round(2, pos_x) , listx_round(3, pos_x), listx_round(4, pos_x)
 end do
 
 !■■■ソートして挟み込む範囲の決定■■■!
 !細かい修正を行う。場合分けがひつよう。
 !
-do i = 0,ix+1   !1-ixまでだった
+do i = 1,ix
     do k = 1,4!coordinateno
         box(k) = listx_round(k,i)
     end do
@@ -275,28 +309,31 @@ do i = 0,ix+1   !1-ixまでだった
     range_x_max(i) = box(coordinateno)!ソート後の一番大きい値
     range_x_min(i) = box(coordinateno -1 )!ソート後の二番目に大きい値
     if (range_x_min(i) == 0 .or. range_x_min(i) ==range_x_max(i) ) range_x_min(i) = box(coordinateno -2 )!もし二番目の値が０若しくは最大値と同じ場合最小値は３番目の値を読む
-
     !  range_x_max(i) = list_max
     !  range_x_min(i) = list_min
     !        最大値    最小値    セル間距離
-    print *, range_x_max(i) ,range_x_min(i)  ,range_x_max(i)-range_x_min(i)
-    
 end do
 
+do pos_x = 1,ix
+    print *, pos_x,listx_round(1, pos_x),listx_round(2, pos_x),listx_round(3, pos_x),listx_round(4, pos_x)
+end do
+
+!■■■x座標をソートして挟み込む範囲の決定■■■!
+call sortdp( size(x), x)
 
 call system_clock(t1)   ! 開始時を記録
 ! time loop
 do t = 1, tx
 
 	! update of sound pressure
-	do i = 1, ix
+	do i = x(1), x(4)
 	do j = range_x_min(i), range_x_max(i)
 		p1(i,j)	= p2(i,j) - crn * (u2(i,j) - u2(i-1,j) + v2(i,j) - v2(i,j-1))
 	end do
 	end do
 		
 	! swap of sound pressure
-	do i = 0, ix + 1
+	do i = x(1), x(4)+ 1
 	do j = range_x_min(i), range_x_max(i)!0, jx + 1
 		p3(i,j)	= p2(i,j)
 		p2(i,j)	= p1(i,j)
@@ -304,21 +341,21 @@ do t = 1, tx
 	end do
 
 	! update of x-directional velocity
-	do i = 0, ix
+	do i = x(1), x(4)
 	do j = range_x_min(i), range_x_max(i)!1, jx
 		u1(i,j)	= u2(i,j) - crn * (p2(i+1,j) - p2(i,j))
 	end do
 	end do
 
 	! update of y-directional velocity
-	do i = 1, ix
+	do i = x(1), x(4)
 	do j = range_x_min(i), range_x_max(i)!0, jx
 		v1(i,j)	= v2(i,j) - crn * (p2(i,j+1) - p2(i,j))
 	end do
 	end do
 
 ! swap of velocity
-	do i = 0, ix + 1
+	do i = x(1), x(4)+ 1
 	do j = range_x_min(i), range_x_max(i)!0, jx + 1
 		u2(i,j)	= u1(i,j)
 		v2(i,j)	= v1(i,j)
@@ -372,7 +409,6 @@ end do
     diff = t2 - t1
   endif
   print "(A, F10.3)", "time it took was:", diff/dble(t_rate)
-  
 end program main
 
 
@@ -435,7 +471,7 @@ subroutine normal_vector(unit_vector_x,unit_vector_y,nx,ny)
 real*4 unit_vector_x,unit_vector_y,nx,ny
 
 nx = ( 0 * unit_vector_x  + 1 * unit_vector_y) !ここあってる？
-ny = ( -1 * unit_vector_x + 0 * unit_vector_y)  !
+ny = ( -1 * unit_vector_x + 0 * unit_vector_y)
 
 return
 end 
@@ -492,3 +528,45 @@ subroutine sortdp(N,data)
 
   return
 end subroutine sortdp
+
+
+!■■■listの入れ替え■■■■■■■■■■■■■■■■■■■■■■■■■■■!
+!in
+!配列長N, 入れ替えたい元配列list, 直線の高さhigh,直線の傾きkatamuki, 入れ替える先の配列list_2,
+!out
+!入れ替える先の配列list_2,
+!■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■!
+subroutine list_change(N, list, high, katamuki, list_2_int)
+    implicit none
+    integer*4 N
+    integer*4 i,k
+    integer*4 ::list_2_int(1,1:N)
+    real*4    ::list(1,1:N),list_2(1,1:N)
+    real*4    high   ,katamuki
+    
+    do i = 1,N
+        list_2(1,i) = katamuki * list(1,i) + high
+        list_2_int(1,i) = nint(list_2(1,i) )
+    end do 
+    
+    return
+end subroutine list_change
+
+!■■■listの入れ替え■■■■■■■■■■■■■■■■■■■■■■■■■■■!
+!in
+!配列長N, 入れ替えたい元配列list, 直線の高さhigh,直線の傾きkatamuki, 入れ替える先の配列list_2,
+!out
+!入れ替える先の配列list_2,
+!■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■!
+!subroutine list_change( list, high, katamuki, list_2_int)
+!    implicit none
+!    integer*4 i,k
+!    integer*4 ::list_2_int
+!    real*4    ::list,list_2
+!    real*4    high   ,katamuki
+!    
+!        list_2 = katamuki * list + high
+!        list_2_int = nint(list_2 )
+!    
+!    return
+!end subroutine list_change
