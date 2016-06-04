@@ -57,7 +57,6 @@ real*4,    allocatable, dimension(:)   :: unit_vector_y
 real*4,    allocatable, dimension(:)   :: nx
 real*4,    allocatable, dimension(:)   :: ny   
 
-real*4,    allocatable, dimension(:,:)   :: kari
 integer*4 :: box(4)
 
 character*256	:: fn, str				    	! output file name and temporal pass string
@@ -75,7 +74,7 @@ real*4      :: span,xx,yy,r,Rlength,timestep
 
 
 !初期値設定
-data arufa/ 0.01/    !吸音率
+data arufa/ 0.9/    !吸音率
 data filenumber/ 21/
 
 
@@ -86,7 +85,6 @@ open (50,file='C:\Users\n\Documents\16_semi\0_input_txt\coordinate\4.txt')
     allocate( x       (coordinateno))
     allocate( y       (coordinateno))
     
-    allocate( kari    (coordinateno,ix+1))!仮
     
     allocate( listx   (coordinateno,ix+1))      !座標数=直線の本数の関係を使用. (x,y) = (直線の本数,x方向への空間広さ)
     allocate( listy   (coordinateno,jx+1))
@@ -112,8 +110,8 @@ open (50,file='C:\Users\n\Documents\16_semi\0_input_txt\coordinate\4.txt')
     allocate( katamuki        (coordinateno))
     
 
-    allocate( range_x_max     (ix+1))!xにおける挟みこむ計算範囲の格納
-    allocate( range_x_min     (ix+1))!xにおける挟みこむ計算範囲の格納
+    allocate( range_x_max     (0:ix+1))!xにおける挟みこむ計算範囲の格納
+    allocate( range_x_min     (0:ix+1))!xにおける挟みこむ計算範囲の格納
     
     rewind(50)
     print*, coordinateno
@@ -154,18 +152,18 @@ do j = 0, jx + 1
 end do
 end do
 
-do i = 0,coordinateno
-    do j = 0,ix+1
-        kari(i,j) = 0
+
+
+do i = 1,coordinateno
+    do j = 1,ix+1
         listx(i,j) = 0
-        listx_round(i,j) =0
+        listx_round(i,j) =1
     end do
 
-    do j = 0,jx+1
+    do j = 1,jx+1
         listy(i,j) = 0
-        listy_round(i,j) =0
+        listy_round(i,j) =1
     end do
-
 end do
 
 ! input wave definition (one cycle of sinusoidal wave on one point)
@@ -179,6 +177,8 @@ do j = 2,jx
 end do
 end do 
 
+
+
 !外積による領域情報の取得.
 !2座標間の外積の結果符号がすべて同じなら内側に音源が存在する.
 do t = 1,4
@@ -189,7 +189,6 @@ do t = 1,4
     end if
     print *,Judge(t)
 end do
-
 
 !法線ベクトルの組み合わせによって符号を判断
 
@@ -204,7 +203,7 @@ t = 1
     end if
 100 do t = 1,4
         print *, x(t), x(t+1), y(t), y(t+1)
-        !print *, "test"
+        print *, y(4)
     end do
     !2点間の傾きを取得
     do t = 1,4
@@ -308,18 +307,22 @@ do i = 1,ix
     
     range_x_max(i) = box(coordinateno)!ソート後の一番大きい値
     range_x_min(i) = box(coordinateno -1 )!ソート後の二番目に大きい値
-    if (range_x_min(i) == 0 .or. range_x_min(i) ==range_x_max(i) ) range_x_min(i) = box(coordinateno -2 )!もし二番目の値が０若しくは最大値と同じ場合最小値は３番目の値を読む
-    !  range_x_max(i) = list_max
-    !  range_x_min(i) = list_min
-    !        最大値    最小値    セル間距離
+    if (range_x_min(i) == 0 .or. range_x_min(i) ==range_x_max(i) ) then
+     range_x_min(i) = box(coordinateno -2 )!もし二番目の値が０若しくは最大値と同じ場合最小値は３番目の値を読む
+    end if
 end do
 
-do pos_x = 1,ix
-    print *, pos_x,listx_round(1, pos_x),listx_round(2, pos_x),listx_round(3, pos_x),listx_round(4, pos_x)
-end do
+
 
 !■■■x座標をソートして挟み込む範囲の決定■■■!
 call sortdp( size(x), x)
+
+do i = 1,ix
+    !if( range_x_min(i) /= 0 .and. range_x_min(i) /= 1)then! 
+    !range_x_min(i) = range_x_min(i) -2
+    !end if
+        print *,i, range_x_min(i),range_x_max(i), x(1), x(2), x(3), x(4)
+end do
 
 call system_clock(t1)   ! 開始時を記録
 ! time loop
@@ -327,7 +330,7 @@ do t = 1, tx
 
 	! update of sound pressure
 	do i = x(1), x(4)
-	do j = range_x_min(i), range_x_max(i)
+	do j =range_x_min(i), range_x_max(i)! 1, jx! 
 		p1(i,j)	= p2(i,j) - crn * (u2(i,j) - u2(i-1,j) + v2(i,j) - v2(i,j-1))
 	end do
 	end do
@@ -342,21 +345,69 @@ do t = 1, tx
 
 	! update of x-directional velocity
 	do i = x(1), x(4)
-	do j = range_x_min(i), range_x_max(i)!1, jx
+	do j =range_x_min(i), range_x_max(i)!1, jx 
 		u1(i,j)	= u2(i,j) - crn * (p2(i+1,j) - p2(i,j))
 	end do
 	end do
 
 	! update of y-directional velocity
 	do i = x(1), x(4)
-	do j = range_x_min(i), range_x_max(i)!0, jx
+	do j =range_x_min(i), range_x_max(i)!0, jx 
 		v1(i,j)	= v2(i,j) - crn * (p2(i,j+1) - p2(i,j))
 	end do
 	end do
+!境界条件
 
+do i = 1,4
+        if(abs(katamuki(i) ) > 1 ) then
+            !■■■listyの計算■■■!            
+            !print*, "tate"
+            do pos_y = 1,jx
+                   ! listy( i, pos_y) = ( pos_y - high(i) ) / katamuki(i)
+                    !listy_round( i ,pos_y) = nint(listy( i ,pos_y) )
+
+                if (nx(i) > 0)then
+                    u1(listy_round(i, pos_y ) -1 ,pos_y )=-p2(listy_round(i, pos_y ),pos_y )*(nx(i)/Z)
+                else                                   
+                    u1(listy_round(i, pos_y )    ,pos_y )= p2(listy_round(i, pos_y ),pos_y )*(abs( nx(i) )/Z)
+                end if
+                
+                if (ny(i) > 0)then                     
+                    v1(listy_round(i, pos_y ),pos_y -1  )=-p2(listy_round(i, pos_y ),pos_y )*(ny(i)/Z)
+                else                                 
+                    v1(listy_round(i, pos_y ),pos_y     )= p2(listy_round(i, pos_y ),pos_y )*(abs(ny(i) )/Z)
+                end if
+                
+                !write(52,"(I8.0,A1,I3.0 )") u1(listy_round( pos_y ),pos_y ),",",u1(listy_round( pos_y ) -1,pos_y)
+            end do
+        else
+            !■■■listxの計算■■■!
+            !print*, "yoko"
+            do pos_x = 1,ix
+                !listx( i,pos_x ) =  katamuki(i)  * pos_x +  high(i) 
+                !listx_round( i,pos_x ) = nint( listx( i,pos_x ) )
+                
+                if (nx(i) > 0)then
+                    u1(pos_x -1,listx_round(i,pos_x )   ) =-p2(pos_x ,listx_round(i,pos_x ) )*nx(i)/Z
+                else
+                    u1(pos_x   ,listx_round(i,pos_x )   ) = p2(pos_x ,listx_round(i,pos_x ) )*(abs(nx(i) )/Z)
+                end if
+                
+                if (ny(i) > 0)then
+                    v1(pos_x   ,listx_round(i,pos_x ) -1) =-p2(pos_x ,listx_round(i,pos_x ) )*ny(i)/Z
+                else
+                    v1(pos_x   ,listx_round(i,pos_x )   ) = p2(pos_x ,listx_round(i,pos_x ) )*(abs(ny(i) )/Z)
+                end if
+                
+            end do
+        end if
+end do
+
+
+!境界条件ここまで
 ! swap of velocity
 	do i = x(1), x(4)+ 1
-	do j = range_x_min(i), range_x_max(i)!0, jx + 1
+	do j = range_x_min(i), range_x_max(i)! 0, jx + 1!
 		u2(i,j)	= u1(i,j)
 		v2(i,j)	= v1(i,j)
 	end do
